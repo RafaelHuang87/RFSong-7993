@@ -83,8 +83,10 @@ class ObjectDetector:
                 continue
             c_bboxes = boxes[inds]
             c_scores = scores[inds, j]
+            #print(scores[:, j])
             c_dets = np.hstack((c_bboxes, c_scores[:, np.newaxis])).astype(
                 np.float32, copy=False)
+            # keep = nms(c_bboxes,c_scores)
 
             keep = nms(c_dets, 0.2, force_cpu=args.cpu)
             c_dets = c_dets[keep, :]
@@ -98,74 +100,50 @@ class ObjectDetector:
 
 if __name__ == '__main__':
     # load net
-    # net = build_net('test', img_dim, num_classes)    # initialize detector
-    # state_dict = torch.load(args.trained_model)
-    # # state_dict = torch.jit.load(args.trained_model)
-    # # create new OrderedDict that does not contain `module.`
-    # from collections import OrderedDict
-    # new_state_dict = OrderedDict()
-    # for k, v in state_dict.items():
-    #     head = k[:7]
-    #     if head == 'module.':
-    #         name = k[7:] # remove `module.`
-    #     else:
-    #         name = k
-    #     new_state_dict[name] = v
-    # net.load_state_dict(new_state_dict)
-    # net.eval()
-    # print('Finished loading model!')
-    # example = torch.rand(1, 3, 460, 460)
-    # traced_script_module = torch.jit.trace(net, example)
-    # traced_script_module.save("weights/model.pt")
-
-    # torch.save(net, 'weights/test.pt')
-
-    # if args.cuda:
-    #     net = net.cuda()
-    #     cudnn.benchmark = True
-    # else:
-    #     net = net.cpu()
-    #
-    # detector = Detect(num_classes,0,cfg)
-    #
-    # transform = BaseTransform(img_dim, rgb_means, (2, 0, 1))
-    # object_detector = ObjectDetector(net, detector, transform)
-    #
-    # img_list = os.listdir(args.img_dir)
-    # for i, img in enumerate(img_list):
-    #     img_name = img
-    #     img = os.path.join(args.img_dir, img)
-    #     image = cv2.imread(img)
-    #     detect_bboxes, tim = object_detector.predict(image)
-    #
-    #     for class_id,class_collection in enumerate(detect_bboxes):
-    #         if len(class_collection)>0:
-    #             for i in range(class_collection.shape[0]):
-    #                 if class_collection[i,-1]>0.6:
-    #                     pt = class_collection[i]
-    #                     cv2.rectangle(image, (int(pt[0]), int(pt[1])), (int(pt[2]), int(pt[3])), (0, 255, 0), 2)
-    #
-    #     cv2.imshow('result',image)
-    #     cv2.waitKey()
-
-    import tensorflow as tf
     net = build_net('test', img_dim, num_classes)    # initialize detector
     state_dict = torch.load(args.trained_model)
-    # state_dict = torch.jit.load(args.trained_model)
     # create new OrderedDict that does not contain `module.`
+
     from collections import OrderedDict
     new_state_dict = OrderedDict()
-    saver = tf.train.Saver()
-    with tf.compat.v1.Session() as sess:
-        for k, v in state_dict.items():
-            head = k[:7]
-            if head == 'module.':
-                name = k[7:] # remove `module.`
-            else:
-                name = k
-            new_state_dict[name] = v
-            tf.Variable(initial_value=v.cpu(), name=name)
-
-        # sess.run(tf.global_variables_initializer())
-        saver.save(sess, 'weights/model.ckpt')
+    for k, v in state_dict.items():
+        head = k[:7]
+        if head == 'module.':
+            name = k[7:] # remove `module.`
+        else:
+            name = k
+        new_state_dict[name] = v
+    net.load_state_dict(new_state_dict)
+    net.eval()
     print('Finished loading model!')
+
+    if args.cuda:
+        net = net.cuda()
+        cudnn.benchmark = True
+    else:
+        net = net.cpu()
+
+    detector = Detect(num_classes,0,cfg)
+
+    transform = BaseTransform(img_dim, rgb_means, (2, 0, 1))
+    object_detector = ObjectDetector(net, detector, transform)
+
+    camera = cv2.VideoCapture(0)
+    cv2.namedWindow('TestCamera')
+    while True:
+        success, frame = camera.read()
+
+        detect_bboxes, tim = object_detector.predict(frame)
+
+        for class_id, class_collection in enumerate(detect_bboxes):
+            if len(class_collection) > 0:
+                for i in range(class_collection.shape[0]):
+                    if class_collection[i, -1] > 0.6:
+                        pt = class_collection[i]
+                        cv2.rectangle(frame, (int(pt[0]), int(pt[1])), (int(pt[2]), int(pt[3])), (0, 255, 0), 2)
+                        cv2.imshow('MyCamera', frame)
+        if cv2.waitKey(1) & 0xff == ord('q'):
+            break
+
+    cv2.destroyWindow('MyCamera')
+    camera.release()
